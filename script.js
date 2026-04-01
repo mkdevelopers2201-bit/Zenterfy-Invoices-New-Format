@@ -1,3 +1,10 @@
+import { createClient } from '@supabase/supabase-js';
+
+// --- Supabase Configuration ---
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
 // --- Utility: Number to Words ---
 function numberToWords(num) {
     const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
@@ -32,12 +39,26 @@ let currentInvoice = {
 };
 
 let register = [];
-try {
-    register = JSON.parse(localStorage.getItem('invoice_register')) || [];
-} catch (e) {
-    console.error('Failed to load register from localStorage', e);
-    register = [];
+
+async function loadRegister() {
+    try {
+        const { data, error } = await supabase
+            .from('invoices')
+            .select('*')
+            .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        register = data || [];
+        if (elements['register-modal'] && !elements['register-modal'].classList.contains('hidden')) {
+            renderRegister();
+        }
+    } catch (e) {
+        console.error('Failed to load register from Supabase', e);
+        register = [];
+    }
 }
+loadRegister();
+
 let deleteId = null;
 
 // --- DOM Elements Cache ---
@@ -231,18 +252,27 @@ function calculateTotals() {
     }
 }
 
-function handleSave() {
-    if (currentInvoice.id) {
-        // Update existing
-        const idx = register.findIndex(inv => inv.id === currentInvoice.id);
-        if (idx !== -1) {
-            register[idx] = { ...currentInvoice, createdAt: Date.now() };
-        }
-        alert('Invoice updated in register!');
-    } else {
-        // Save new
-        const newInvoice = { ...currentInvoice, id: Math.random().toString(36).substr(2, 9), createdAt: Date.now() };
-        register.push(newInvoice);
+async function handleSave() {
+    const invoiceData = {
+        id: currentInvoice.id || Math.random().toString(36).substr(2, 9),
+        bill_to: currentInvoice.billTo,
+        bill_number: currentInvoice.billNumber,
+        gstin_number: currentInvoice.gstinNumber,
+        dated: currentInvoice.dated,
+        address: currentInvoice.address,
+        purchase_order: currentInvoice.purchaseOrder,
+        items: currentInvoice.items,
+        created_at: new Date().toISOString()
+    };
+
+    try {
+        const { error } = await supabase
+            .from('invoices')
+            .upsert(invoiceData);
+
+        if (error) throw error;
+
+        alert(currentInvoice.id ? 'Invoice updated in backend!' : 'Invoice saved to backend!');
         
         // Auto increment bill number
         const currentBillNum = parseInt(currentInvoice.billNumber);
@@ -254,9 +284,11 @@ function handleSave() {
         } else {
             resetForm();
         }
-        alert('Invoice saved to register!');
+        await loadRegister();
+    } catch (e) {
+        console.error('Error saving to Supabase:', e);
+        alert('Failed to save invoice: ' + e.message);
     }
-    localStorage.setItem('invoice_register', JSON.stringify(register));
 }
 
 function resetForm() {
@@ -334,10 +366,10 @@ function renderRegister() {
 
         html += `
             <tr class="hover:bg-gray-50 transition-colors group">
-                <td class="py-4 font-mono font-bold text-blue-600">${inv.billNumber}</td>
+                <td class="py-4 font-mono font-bold text-blue-600">${inv.bill_number}</td>
                 <td class="py-4">
-                    <div class="font-medium text-gray-900">${inv.billTo || 'N/A'}</div>
-                    <div class="text-xs text-gray-500">${inv.gstinNumber}</div>
+                    <div class="font-medium text-gray-900">${inv.bill_to || 'N/A'}</div>
+                    <div class="text-xs text-gray-500">${inv.gstin_number}</div>
                 </td>
                 <td class="py-4 text-sm text-gray-600">${inv.dated}</td>
                 <td class="py-4 text-right font-bold text-gray-900">₹${grandTotal.toFixed(2)}</td>
@@ -365,7 +397,16 @@ function renderRegister() {
 window.editInvoice = (id) => {
     const inv = register.find(i => i.id === id);
     if (inv) {
-        currentInvoice = JSON.parse(JSON.stringify(inv));
+        currentInvoice = {
+            id: inv.id,
+            billTo: inv.bill_to,
+            billNumber: inv.bill_number,
+            gstinNumber: inv.gstin_number,
+            dated: inv.dated,
+            address: inv.address,
+            purchaseOrder: inv.purchase_order,
+            items: inv.items
+        };
         const fields = ['billTo', 'gstinNumber', 'address', 'billNumber', 'dated', 'purchaseOrder'];
         fields.forEach(f => {
             if (elements[f]) elements[f].value = currentInvoice[f] || '';
@@ -385,13 +426,23 @@ window.confirmDelete = (id) => {
     if (elements['delete-modal']) elements['delete-modal'].classList.remove('hidden');
 };
 
-function handleDelete() {
+async function handleDelete() {
     if (deleteId) {
-        register = register.filter(inv => inv.id !== deleteId);
-        localStorage.setItem('invoice_register', JSON.stringify(register));
-        deleteId = null;
-        if (elements['delete-modal']) elements['delete-modal'].classList.add('hidden');
-        renderRegister();
+        try {
+            const { error } = await supabase
+                .from('invoices')
+                .delete()
+                .eq('id', deleteId);
+
+            if (error) throw error;
+
+            deleteId = null;
+            if (elements['delete-modal']) elements['delete-modal'].classList.add('hidden');
+            await loadRegister();
+        } catch (e) {
+            console.error('Error deleting from Supabase:', e);
+            alert('Failed to delete invoice: ' + e.message);
+        }
     }
 }
 
