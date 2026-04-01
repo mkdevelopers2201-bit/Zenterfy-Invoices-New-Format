@@ -1,9 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
-
 // --- Supabase Configuration ---
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseUrl = 'https://zicpxxyoyavgmvephgus.supabase.co';
+const supabaseKey = 'sb_publishable_biL3uHaWg4H8cp6n-93TXg_UiW5utzu';
 
 // --- Utility: Number to Words ---
 function numberToWords(num) {
@@ -39,26 +36,12 @@ let currentInvoice = {
 };
 
 let register = [];
-
-async function loadRegister() {
-    try {
-        const { data, error } = await supabase
-            .from('invoices')
-            .select('*')
-            .order('created_at', { ascending: false });
-        
-        if (error) throw error;
-        register = data || [];
-        if (elements['register-modal'] && !elements['register-modal'].classList.contains('hidden')) {
-            renderRegister();
-        }
-    } catch (e) {
-        console.error('Failed to load register from Supabase', e);
-        register = [];
-    }
+try {
+    register = JSON.parse(localStorage.getItem('invoice_register')) || [];
+} catch (e) {
+    console.error('Failed to load register from localStorage', e);
+    register = [];
 }
-loadRegister();
-
 let deleteId = null;
 
 // --- DOM Elements Cache ---
@@ -253,41 +236,61 @@ function calculateTotals() {
 }
 
 async function handleSave() {
+    
+
+    // Data prepare karein Supabase table ke hisaab se
     const invoiceData = {
-        id: currentInvoice.id || Math.random().toString(36).substr(2, 9),
         bill_to: currentInvoice.billTo,
         bill_number: currentInvoice.billNumber,
         gstin_number: currentInvoice.gstinNumber,
         dated: currentInvoice.dated,
         address: currentInvoice.address,
         purchase_order: currentInvoice.purchaseOrder,
-        items: currentInvoice.items,
-        created_at: new Date().toISOString()
+        items: currentInvoice.items, // JSONB column
+        grand_total: parseFloat(elements['grand-total'].textContent)
     };
 
     try {
-        const { error } = await supabase
-            .from('invoices')
-            .upsert(invoiceData);
+        const response = await fetch(`${supabaseUrl}/rest/v1/invoices`, {
+            method: 'POST',
+            headers: {
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=minimal'
+            },
+            body: JSON.stringify(invoiceData)
+        });
 
-        if (error) throw error;
+        if (response.ok) {
+            alert('Invoice successfully saved to Supabase!');
+            
+            // Local register mein bhi update karlein backup ke liye 
+            const newInvoice = { ...currentInvoice, id: Math.random().toString(36).substr(2, 9), createdAt: Date.now() };
+            register.push(newInvoice);
+            localStorage.setItem('invoice_register', JSON.stringify(register));
 
-        alert(currentInvoice.id ? 'Invoice updated in backend!' : 'Invoice saved to backend!');
-        
-        // Auto increment bill number
-        const currentBillNum = parseInt(currentInvoice.billNumber);
-        if (!isNaN(currentBillNum)) {
-            const nextBillNum = (currentBillNum + 1).toString().padStart(currentInvoice.billNumber.length, '0');
-            resetForm();
-            if (elements['billNumber']) elements['billNumber'].value = nextBillNum;
-            currentInvoice.billNumber = nextBillNum;
+            // Bill number increment logic 
+            const currentBillNum = parseInt(currentInvoice.billNumber);
+            if (!isNaN(currentBillNum)) {
+                const nextBillNum = (currentBillNum + 1).toString().padStart(currentInvoice.billNumber.length, '0');
+                resetForm();
+                if (elements['billNumber']) elements['billNumber'].value = nextBillNum;
+                currentInvoice.billNumber = nextBillNum;
+            } else {
+                resetForm();
+            }
         } else {
-            resetForm();
+            const errorData = await response.json();
+            console.error('Supabase Error:', errorData);
+            alert('Failed to save: ' + errorData.message);
         }
-        await loadRegister();
-    } catch (e) {
-        console.error('Error saving to Supabase:', e);
-        alert('Failed to save invoice: ' + e.message);
+    } catch (err) {
+        console.error('Network Error:', err);
+        alert('Connection error. Please check internet.');
+    } finally {
+        elements['save-btn'].innerText = originalBtnText;
+        elements['save-btn'].disabled = false;
     }
 }
 
@@ -366,10 +369,10 @@ function renderRegister() {
 
         html += `
             <tr class="hover:bg-gray-50 transition-colors group">
-                <td class="py-4 font-mono font-bold text-blue-600">${inv.bill_number}</td>
+                <td class="py-4 font-mono font-bold text-blue-600">${inv.billNumber}</td>
                 <td class="py-4">
-                    <div class="font-medium text-gray-900">${inv.bill_to || 'N/A'}</div>
-                    <div class="text-xs text-gray-500">${inv.gstin_number}</div>
+                    <div class="font-medium text-gray-900">${inv.billTo || 'N/A'}</div>
+                    <div class="text-xs text-gray-500">${inv.gstinNumber}</div>
                 </td>
                 <td class="py-4 text-sm text-gray-600">${inv.dated}</td>
                 <td class="py-4 text-right font-bold text-gray-900">₹${grandTotal.toFixed(2)}</td>
@@ -397,16 +400,7 @@ function renderRegister() {
 window.editInvoice = (id) => {
     const inv = register.find(i => i.id === id);
     if (inv) {
-        currentInvoice = {
-            id: inv.id,
-            billTo: inv.bill_to,
-            billNumber: inv.bill_number,
-            gstinNumber: inv.gstin_number,
-            dated: inv.dated,
-            address: inv.address,
-            purchaseOrder: inv.purchase_order,
-            items: inv.items
-        };
+        currentInvoice = JSON.parse(JSON.stringify(inv));
         const fields = ['billTo', 'gstinNumber', 'address', 'billNumber', 'dated', 'purchaseOrder'];
         fields.forEach(f => {
             if (elements[f]) elements[f].value = currentInvoice[f] || '';
@@ -426,23 +420,13 @@ window.confirmDelete = (id) => {
     if (elements['delete-modal']) elements['delete-modal'].classList.remove('hidden');
 };
 
-async function handleDelete() {
+function handleDelete() {
     if (deleteId) {
-        try {
-            const { error } = await supabase
-                .from('invoices')
-                .delete()
-                .eq('id', deleteId);
-
-            if (error) throw error;
-
-            deleteId = null;
-            if (elements['delete-modal']) elements['delete-modal'].classList.add('hidden');
-            await loadRegister();
-        } catch (e) {
-            console.error('Error deleting from Supabase:', e);
-            alert('Failed to delete invoice: ' + e.message);
-        }
+        register = register.filter(inv => inv.id !== deleteId);
+        localStorage.setItem('invoice_register', JSON.stringify(register));
+        deleteId = null;
+        if (elements['delete-modal']) elements['delete-modal'].classList.add('hidden');
+        renderRegister();
     }
 }
 
