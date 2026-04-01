@@ -1,0 +1,98 @@
+@media print {
+    @page {
+        margin: 10mm;
+    }
+    
+    html, body {
+        height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        background: white !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    /* Hide everything by default */
+    body * {
+        visibility: hidden;
+    }
+
+    /* Show only the invoice container and its children */
+    #invoice-container, #invoice-container * {
+        visibility: visible;
+    }
+
+    #invoice-container {
+        width: 210mm !important;
+        max-width: 100%;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+        background: white !important;
+        display: block !important;
+        position: relative !important;
+    }
+
+    #invoice-container > div#print-area {
+        margin: 20 !important;
+        padding: 20 !important;
+        box-sizing: border-box !important;
+        display: flex !important;
+        flex-direction: column !important;
+        border: 2px solid black !important;
+        font-family: 'Poppins', sans-serif !important;
+        min-height: auto !important;
+    }
+
+    /* Hide specific elements that shouldn't be in print */
+    .print\:hidden, button, .fixed, .absolute:not(#invoice-container) {
+        display: none !important;
+    }
+
+    /* Ensure inputs and textareas look like plain text in print */
+    input, textarea, select {
+        border: none !important;
+        background: transparent !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
+        -webkit-appearance: none !important;
+        -moz-appearance: none !important;
+        appearance: none !important;
+    }
+
+    /* Ensure table rows and footers are visible */
+    tr, #items-footer tr {
+        visibility: visible !important;
+        display: table-row !important;
+        page-break-inside: avoid !important;
+    }
+
+    #round-off-row:not(.hidden) {
+        display: flex !important;
+    }
+}
+
+/* Hide spin buttons for number inputs */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input[type=number] {
+    -moz-appearance: textfield;
+}
+
+/* Custom styles for POppins font */
+body {
+    font-family: 'Poppins', sans-serif;
+}
+
+.hidden {
+    display: none !important;
+}
