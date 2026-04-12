@@ -1,9 +1,64 @@
+// --- Supabase Setup ---
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+const SUPABASE_URL = "https://uxhualclugoipshiilsu.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV4aHVhbGNsdWdvaXBzaGlpbHN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5OTM4MDksImV4cCI6MjA5MTU2OTgwOX0.3L1hJyeinykZty-VKWs1zrACGg-aAUkiOE7_9cuV7VU";
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 // --- Configuration ---
 const INITIAL_ROWS = 10;
 const TAX_OPTIONS = [0, 5, 12, 18, 28];
 
 const state = {
     items: []
+};
+
+document.getElementById('save-btn').onclick = async () => {
+    const dataToInsert = {
+        // Invoice details
+        invoice_number: document.getElementById('billNumber').value,
+        date: document.getElementById('dated').value,
+        customer: document.getElementById('billTo').value,
+
+        // First item (basic version)
+        item_name: state.items[0]?.particulars || "",
+        hsn_code: state.items[0]?.hsn || "",
+        rate: state.items[0]?.rate || 0,
+        qty: state.items[0]?.qty || 0,
+        amount: state.items[0]?.amount || 0,
+
+        // Discount (abhi static)
+        discount_percent: 0,
+        discounted_amount: 0,
+
+        // GST
+        gst_percent: state.items[0]?.tax || 0,
+        gst_amount: (state.items[0]?.cgst || 0) + (state.items[0]?.sgst || 0),
+
+        cgst: state.items[0]?.cgst || 0,
+        sgst: state.items[0]?.sgst || 0,
+
+        // Final total
+        net_bill: parseFloat(document.getElementById('grand-total').textContent) || 0,
+
+        // Extra fields
+        status: "Pending",
+        gst_enabled: true,
+        payments: []
+    };
+
+    const { data, error } = await supabase
+        .from('sales_entries')
+        .insert([dataToInsert]);
+
+    if (error) {
+        console.error("Error saving:", error);
+        alert("Error saving invoice");
+    } else {
+        console.log("Saved:", data);
+        alert("Invoice saved successfully");
+    }
 };
 
 // --- Number to Words ---
